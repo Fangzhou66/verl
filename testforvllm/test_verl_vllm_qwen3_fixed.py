@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Simple test to verify vLLM works with Qwen3-8B on TPU using VERL's modifications."""
+"""Fixed test to verify vLLM works with Qwen3-8B on TPU using VERL's modifications.
+This version matches the working vllm serve configuration."""
 
 import os
 import sys
@@ -32,10 +33,15 @@ try:
 except Exception as e:
     print(f"Warning: Could not check/clean up processes: {e}")
 
-# Set up environment for TPU - MUST be set before any imports
+# Set up environment for TPU - Match the working configuration
 os.environ["PJRT_DEVICE"] = "TPU"
-# os.environ["XLA_USE_SPMD"] = "0"  # Changed to 0 for vLLM compatibility
+# Don't set XLA_USE_SPMD - let it use defaults
+# Don't set VLLM_USE_V1 - let it use default value of 1
 
+print("\n=== Environment Configuration ===")
+print(f"PJRT_DEVICE: {os.environ.get('PJRT_DEVICE', 'not set')}")
+print(f"VLLM_USE_V1: {os.environ.get('VLLM_USE_V1', 'not set (will default to 1)')}")
+print(f"XLA_USE_SPMD: {os.environ.get('XLA_USE_SPMD', 'not set')}")
 
 # Add paths
 sys.path.insert(0, "/home/fangzhou/verl")
@@ -91,22 +97,24 @@ def test_vllm_with_verl_modifications():
     
     try:
         print(f"\nLoading {model_name} on TPU...")
+        print("Configuration (matching working vllm serve):")
         print("  tensor_parallel_size: 8")
         print("  dtype: bfloat16")
-        print("  max_model_len: 4096")
+        print("  max_model_len: 32768")
+        print("  enforce_eager: False")
+        print("  Using V1 engine (default)")
         
-        # Create LLM instance
+        # Create LLM instance with same config as working vllm serve
         llm = LLM(
             model=model_name,
             device="tpu",
-            tensor_parallel_size=1,  # TPU v6e-8 has 8 cores
-            # dtype="bfloat16",
-            max_model_len=32768,
-            enforce_eager=True,
-            # trust_remote_code=True,
+            tensor_parallel_size=8,  # TPU v6e-8 has 8 cores
+            dtype="bfloat16",
+            max_model_len=32768,  # Match working config
+            enforce_eager=False,  # Match user's modification
+            trust_remote_code=True,
             download_dir="/tmp/models",
-            gpu_memory_utilization=0.7,
-            swap_space=16,
+            swap_space=32,
             disable_log_stats=True,
         )
         
@@ -181,7 +189,12 @@ def test_verl_rollout_components():
 
 def main():
     """Run all tests."""
-    print("=== VERL + vLLM Qwen3-8B TPU Test (Simple) ===")
+    print("=== VERL + vLLM Qwen3-8B TPU Test (Fixed Configuration) ===")
+    print("\nThis test uses the same configuration as the working vllm serve command:")
+    print("- Default VLLM_USE_V1=1 (V1 engine)")
+    print("- No XLA_USE_SPMD override")
+    print("- max_model_len=32768")
+    print("- enforce_eager=False")
     
     # Test 1: VERL components
     verl_ok = test_verl_rollout_components()
@@ -203,7 +216,6 @@ def main():
         print("2. Check that torch_xla is properly installed")
         print("3. Verify TPU is available with: python -c 'import torch_xla.core.xla_model as xm; print(xm.xla_device())'")
         print("4. Make sure PJRT_DEVICE=TPU is set")
-       
 
 
 if __name__ == "__main__":

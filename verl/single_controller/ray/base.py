@@ -383,7 +383,11 @@ class RayWorkerGroup(WorkerGroup):
                 # Add TPU-specific environment variables
                 if self.device_name == "tpu":
                     env_vars["PJRT_DEVICE"] = "TPU"
-                    env_vars["XLA_USE_SPMD"] = "1"
+                    # For vLLM compatibility, default to SPMD=0 unless explicitly set
+                    # vLLM's memory info API doesn't work with SPMD=1 without tpu_info package
+                    # Users can override by setting VLLM_XLA_USE_SPMD=1 if they have the workaround
+                    if "VLLM_XLA_USE_SPMD" not in os.environ:
+                        env_vars["XLA_USE_SPMD"] = "0"
                     # TPU visibility will be handled by Ray's TPU resource allocation
                 
                 if rank != 0:

@@ -39,12 +39,9 @@ def is_tpu_available() -> bool:
     """Check the availability of TPU"""
     if not is_torch_xla_available():
         return False
-    
     try:
         import torch_xla.core.xla_model as xm
-        # Check if we can get an XLA device
-        device = xm.xla_device()
-        return True
+        return xm.xla_device() is not None
     except Exception:
         return False
 
