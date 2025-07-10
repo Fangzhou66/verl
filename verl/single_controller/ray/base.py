@@ -112,6 +112,8 @@ class RayResourcePool(ResourcePool):
             device_name = "NPU"
         elif device_name == "cuda":
             device_name = "GPU"
+        elif device_name == "tpu":
+            device_name = "TPU"
 
         bundle = {"CPU": self.max_colocate_count}
         if self.use_gpu:
@@ -242,6 +244,8 @@ class RayClassWithInitArgs(ClassWithInitArgs):
             options["num_gpus"] = num_gpus
         if use_gpu and device_name == "npu":
             options["resources"] = {"NPU": num_gpus}
+        if use_gpu and device_name == "tpu":
+            options["resources"] = {"TPU": num_gpus}
 
         if len(self._additional_resource) > 1:
             for k, v in self._additional_resource.items():
@@ -375,6 +379,13 @@ class RayWorkerGroup(WorkerGroup):
                     "RAY_LOCAL_WORLD_SIZE": str(local_world_size),
                     "RAY_LOCAL_RANK": str(local_rank),
                 }
+                
+                # Add TPU-specific environment variables
+                if self.device_name == "tpu":
+                    env_vars["PJRT_DEVICE"] = "TPU"
+                    env_vars["XLA_USE_SPMD"] = "1"
+                    # TPU visibility will be handled by Ray's TPU resource allocation
+                
                 if rank != 0:
                     env_vars["MASTER_ADDR"] = self._master_addr
                     env_vars["MASTER_PORT"] = self._master_port

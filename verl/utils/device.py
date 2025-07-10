@@ -9,6 +9,7 @@
 # This source code is licensed under the BSD-style license in https://github.com/pytorch/torchtune/blob/main/LICENSE
 
 import logging
+import os
 
 import torch
 
@@ -25,21 +26,52 @@ def is_torch_npu_available() -> bool:
         return False
 
 
+def is_torch_xla_available() -> bool:
+    """Check if torch_xla is available"""
+    try:
+        import torch_xla  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
+def is_tpu_available() -> bool:
+    """Check the availability of TPU"""
+    if not is_torch_xla_available():
+        return False
+    
+    try:
+        import torch_xla.core.xla_model as xm
+        # Check if we can get an XLA device
+        device = xm.xla_device()
+        return True
+    except Exception:
+        return False
+
+
 is_cuda_available = torch.cuda.is_available()
 is_npu_available = is_torch_npu_available()
+is_tpu_available = is_tpu_available()
 
 
 def get_visible_devices_keyword() -> str:
     """Function that gets visible devices keyword name.
     Returns:
-        'CUDA_VISIBLE_DEVICES' or `ASCEND_RT_VISIBLE_DEVICES`
+        'CUDA_VISIBLE_DEVICES', 'ASCEND_RT_VISIBLE_DEVICES', or 'TPU_VISIBLE_CHIPS'
     """
-    return "CUDA_VISIBLE_DEVICES" if is_cuda_available else "ASCEND_RT_VISIBLE_DEVICES"
+    if is_cuda_available:
+        return "CUDA_VISIBLE_DEVICES"
+    elif is_npu_available:
+        return "ASCEND_RT_VISIBLE_DEVICES"
+    elif is_tpu_available:
+        return "TPU_VISIBLE_CHIPS"
+    else:
+        return "CUDA_VISIBLE_DEVICES"  # Default fallback
 
 
 def get_device_name() -> str:
     """Function that gets the torch.device based on the current machine.
-    This currently only supports CPU, CUDA, NPU.
+    This currently supports CPU, CUDA, NPU, and TPU.
     Returns:
         device
     """
@@ -47,6 +79,8 @@ def get_device_name() -> str:
         device = "cuda"
     elif is_npu_available:
         device = "npu"
+    elif is_tpu_available:
+        device = "tpu"
     else:
         device = "cpu"
     return device
@@ -58,6 +92,16 @@ def get_torch_device() -> any:
         module: The corresponding torch device namespace, or torch.cuda if not found.
     """
     device_name = get_device_name()
+    
+    if device_name == "tpu":
+        # TPU doesn't have a torch.tpu namespace, return XLA utilities
+        try:
+            import torch_xla.core.xla_model as xm
+            return xm
+        except ImportError:
+            logger.warning("torch_xla not available for TPU device")
+            return torch.cuda
+    
     try:
         return getattr(torch, device_name)
     except AttributeError:
@@ -70,7 +114,13 @@ def get_device_id() -> int:
     Returns:
         device index
     """
-    return get_torch_device().current_device()
+    device_name = get_device_name()
+    if device_name == "tpu":
+        # For TPU, return the ordinal of the current device
+        import torch_xla.core.xla_model as xm
+        return xm.get_ordinal()
+    else:
+        return get_torch_device().current_device()
 
 
 def get_nccl_backend() -> str:
@@ -82,5 +132,7 @@ def get_nccl_backend() -> str:
         return "nccl"
     elif is_npu_available:
         return "hccl"
+    elif is_tpu_available:
+        return "xla"  # TPU uses XLA for collective operations
     else:
         raise RuntimeError(f"No available nccl backend found on device type {get_device_name()}.")

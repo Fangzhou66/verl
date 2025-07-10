@@ -162,15 +162,18 @@ class vLLMRollout(BaseRollout):
         if config.get("limit_images", None):  # support for multi-image data
             engine_kwargs["limit_mm_per_prompt"] = {"image": config.get("limit_images")}
 
-        self.inference_engine = LLM(
+        # Check if we're running on TPU
+        from verl.utils.device import get_device_name
+        device_name = get_device_name()
+        
+        # Prepare device-specific LLM kwargs
+        llm_kwargs = dict(
             model=model_path,
             enable_sleep_mode=config.free_cache_engine,
             tensor_parallel_size=tensor_parallel_size,
             distributed_executor_backend="external_launcher",
             dtype=config.dtype,
             enforce_eager=config.enforce_eager,
-            gpu_memory_utilization=config.gpu_memory_utilization,
-            disable_custom_all_reduce=True,
             skip_tokenizer_init=False,
             max_model_len=max_model_len,
             load_format=load_format,
@@ -183,6 +186,20 @@ class vLLMRollout(BaseRollout):
             **lora_kwargs,
             **engine_kwargs,
         )
+        
+        # Device-specific adjustments
+        if device_name == "tpu":
+            # TPU doesn't use gpu_memory_utilization
+            # TPU uses device="tpu" parameter
+            llm_kwargs["device"] = "tpu"
+            # TPU doesn't support custom all reduce
+            llm_kwargs["disable_custom_all_reduce"] = True
+        else:
+            # GPU/CUDA specific parameters
+            llm_kwargs["gpu_memory_utilization"] = config.gpu_memory_utilization
+            llm_kwargs["disable_custom_all_reduce"] = True
+        
+        self.inference_engine = LLM(**llm_kwargs)
 
         # Offload vllm model to reduce peak memory usage
         if config.free_cache_engine:

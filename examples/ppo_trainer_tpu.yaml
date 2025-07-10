@@ -1,0 +1,186 @@
+# TPU-specific PPO trainer configuration example
+# This configuration is designed for TPU v6e-8
+
+# specify the default per-component configs
+defaults:
+
+  # <folder_name>@<field_name>.<field_name>: <yaml_file_name>
+  # actor_rollout_ref.actor: trainer/config/actor/dp_actor.yaml
+  - actor@actor_rollout_ref.actor: dp_actor
+
+  # trainer.npu_profile: trainer/config/npu_profile/npu_profile.yaml
+  - npu_profile@trainer.npu_profile: npu_profile
+
+  # data: trainer/config/data/legacy_data.yaml
+  - data@data: legacy_data
+
+  # Reference model config.
+  # Reference model will be enabled when actor.use_kl_loss or/and algorithm.use_kl_in_reward is/are True.
+  - ref@actor_rollout_ref.ref: dp_ref
+
+  # Rollout model config - using TPU-specific config
+  - rollout@actor_rollout_ref.rollout: tpu_rollout
+
+  # Critic model config.
+  - critic@critic: dp_critic
+
+  # Reward model config.
+  - reward_model@reward_model: dp_reward_model
+
+  # load the reference default config, then apply the fields in the current yaml
+  # self config override anything above
+  - _self_
+
+# config for actor, rollout and reference model
+actor_rollout_ref:
+
+  # Whether it's a hybrid engine, currently only supports hybrid engine
+  hybrid_engine: true
+
+  # common configs for the model
+  model:
+
+    # Huggingface model path. Update this to your model
+    # Example: Qwen/Qwen3-8B
+    path: Qwen/Qwen3-8B
+
+    # Custom chat template for the model.
+    custom_chat_template: null
+
+    # whether to use flash attention
+    enable_flashattn: false
+
+  # Override rollout config for TPU
+  rollout:
+    # TPU v6e-8 has 8 cores
+    # Adjust based on your model's attention heads
+    tensor_model_parallel_size: 8
+    
+    # TPU-specific settings
+    dtype: bfloat16
+    enforce_eager: true
+    
+    # Remove GPU-specific settings
+    gpu_memory_utilization: null
+
+# Trainer configuration
+trainer:
+
+  # project name for wandb
+  project_name: verl_tpu_example
+
+  # experiment name for wandb
+  experiment_name: qwen3_8b_tpu_ppo
+
+  # run name for wandb
+  run_name: null
+
+  # total number of training epochs
+  n_epochs: 3
+
+  # number of iterations per epoch
+  n_iters_per_epoch: 100
+
+  # Device name override for TPU
+  device_name: tpu
+
+  # gradient accumulation steps
+  gradient_accumulation_steps: 1
+
+  # save model per save_freq iterations
+  save_freq: -1
+
+  # evaluate model per eval_freq iterations. -1 for eval every epoch
+  eval_freq: -1
+
+  # evaluate at the very beginning (before training) enable this when you want to
+  # inspect the quality of SFT checkpoint or generation of SFT checkpoint
+  eval_at_very_beginning: false
+
+  # project directory to save checkpoints
+  default_local_dir: ~/verl/checkpoints/
+
+  # project directory to save checkpoints (HDFS)
+  default_hdfs_dir: null
+
+  # Number of updates between two minibatch logging
+  log_freq: 1
+
+  # trainer type for different backends. FSDP, Megatron, DDP
+  nnodes: 1
+
+  # number of GPUs per node (for TPU, this will be number of TPU cores)
+  nproc_per_node: 8
+
+  # node rank
+  node_rank: 0
+
+  # master address
+  master_addr: 127.0.0.1
+
+  # master port
+  master_port: 37607
+
+  # torch distributed world size
+  world_size: ${trainer.nnodes}*${trainer.nproc_per_node}
+
+  # Function to process metrics during training.
+  process_metrics: verl.trainer.ppo.ppo_functional.process_ppo_metrics
+
+  # Device placement for models (TPU-specific)
+  backend: 'deepspeed'  # For TPU, we use basic distributed backend
+
+# PPO algorithm settings
+algorithm:
+
+  # discount factor
+  gamma: 1.0
+
+  # lambda for GAE
+  lam: 0.95
+
+  # VERL only supports get_advantages_and_returns for advantage_estimator
+  advantage_estimator: gae
+
+  # whether to use reward model score in reward computation
+  use_rm_score_in_reward: False
+
+  # whether to use reward model score norm
+  use_rm_score_norm: False
+
+  # rm score norm coef
+  rm_score_norm_coef: 0.001
+
+  # Whether to use length penalty in reward computation. Note that reward penalty is only applied during RL training (excluded from evaluation)
+  use_length_penalty_in_reward: False
+
+  # normalize advantage
+  adv_norm: True
+
+  # whether to add KL divergence in reward
+  use_kl_in_reward: False
+
+  # coefficient of KL divergence in reward
+  kl_in_reward_coef: 0.01
+
+# Data configuration
+data:
+  # Update these based on your dataset
+  train_files: []
+  val_files: []
+  max_prompt_length: 512
+  max_response_length: 512
+  
+# Override resource pool settings for TPU
+actor_rollout_ref:
+  actor:
+    # TPU-specific settings
+    optim:
+      # Use a lower learning rate for stability on TPU
+      lr: 1.e-5
+
+critic:
+  # TPU-specific settings  
+  optim:
+    # Use a lower learning rate for stability on TPU
+    lr: 3.e-6
