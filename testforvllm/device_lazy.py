@@ -36,39 +36,81 @@ def is_torch_xla_available() -> bool:
 
 
 def is_tpu_available() -> bool:
-    """Check the availability of TPU"""
+    """Check the availability of TPU
+    
+    IMPORTANT: This function now uses lazy evaluation to avoid creating
+    XLA tensors at import time, which can cause SPMD segfaults.
+    """
     if not is_torch_xla_available():
         return False
     try:
         import torch_xla.core.xla_model as xm
-        return xm.xla_device() is not None
+        # Instead of calling xm.xla_device() which creates a tensor,
+        # we check environment variables and XLA runtime availability
+        # This avoids creating XLA tensors before SPMD mode is set
+        
+        # Check if PJRT_DEVICE is set to TPU
+        if os.environ.get('PJRT_DEVICE') == 'TPU':
+            return True
+            
+        # Alternatively, try to check if XLA runtime is available
+        # without actually creating a device
+        try:
+            # This is a safer check that doesn't create tensors
+            import torch_xla.runtime as xr
+            return xr.device_type() == 'TPU'
+        except:
+            # Fallback: assume TPU is available if torch_xla is installed
+            # and PJRT_DEVICE suggests TPU
+            return 'TPU' in os.environ.get('PJRT_DEVICE', '')
     except Exception:
         return False
 
 
-is_cuda_available = torch.cuda.is_available()
-is_npu_available = is_torch_npu_available()
-# Lazy initialization to prevent early XLA device creation
-_is_tpu_available = None
+# Use lazy evaluation for device availability checks
+# These will be computed on first access rather than at import time
+class LazyDeviceChecker:
+    def __init__(self):
+        self._is_cuda_available = None
+        self._is_npu_available = None
+        self._is_tpu_available = None
+    
+    @property
+    def is_cuda_available(self):
+        if self._is_cuda_available is None:
+            self._is_cuda_available = torch.cuda.is_available()
+        return self._is_cuda_available
+    
+    @property
+    def is_npu_available(self):
+        if self._is_npu_available is None:
+            self._is_npu_available = is_torch_npu_available()
+        return self._is_npu_available
+    
+    @property
+    def is_tpu_available(self):
+        if self._is_tpu_available is None:
+            self._is_tpu_available = is_tpu_available()
+        return self._is_tpu_available
+
+
+# Create a global lazy checker instance
+_device_checker = LazyDeviceChecker()
+
+# Export these as module-level attributes for backward compatibility
+is_cuda_available = property(lambda self: _device_checker.is_cuda_available)
+is_npu_available = property(lambda self: _device_checker.is_npu_available)
+is_tpu_available = property(lambda self: _device_checker.is_tpu_available)
+
+# For direct access, provide the lazy checker
+def get_is_cuda_available():
+    return _device_checker.is_cuda_available
+
+def get_is_npu_available():
+    return _device_checker.is_npu_available
 
 def get_is_tpu_available():
-    global _is_tpu_available
-    if _is_tpu_available is None:
-        _is_tpu_available = is_tpu_available()
-    return _is_tpu_available
-
-# For backward compatibility, make it accessible as a property
-class TPUAvailabilityProperty:
-    def __bool__(self):
-        return get_is_tpu_available()
-    
-    def __repr__(self):
-        return str(get_is_tpu_available())
-    
-    def __str__(self):
-        return str(get_is_tpu_available())
-
-is_tpu_available = TPUAvailabilityProperty()
+    return _device_checker.is_tpu_available
 
 
 def get_visible_devices_keyword() -> str:
@@ -76,11 +118,11 @@ def get_visible_devices_keyword() -> str:
     Returns:
         'CUDA_VISIBLE_DEVICES', 'ASCEND_RT_VISIBLE_DEVICES', or 'TPU_VISIBLE_CHIPS'
     """
-    if is_cuda_available:
+    if get_is_cuda_available():
         return "CUDA_VISIBLE_DEVICES"
-    elif is_npu_available:
+    elif get_is_npu_available():
         return "ASCEND_RT_VISIBLE_DEVICES"
-    elif is_tpu_available:
+    elif get_is_tpu_available():
         return "TPU_VISIBLE_CHIPS"
     else:
         return "CUDA_VISIBLE_DEVICES"  # Default fallback
@@ -92,11 +134,11 @@ def get_device_name() -> str:
     Returns:
         device
     """
-    if is_cuda_available:
+    if get_is_cuda_available():
         device = "cuda"
-    elif is_npu_available:
+    elif get_is_npu_available():
         device = "npu"
-    elif is_tpu_available:
+    elif get_is_tpu_available():
         device = "tpu"
     else:
         device = "cpu"
@@ -145,11 +187,11 @@ def get_nccl_backend() -> str:
     Returns:
         nccl backend type string.
     """
-    if is_cuda_available:
+    if get_is_cuda_available():
         return "nccl"
-    elif is_npu_available:
+    elif get_is_npu_available():
         return "hccl"
-    elif is_tpu_available:
+    elif get_is_tpu_available():
         return "xla"  # TPU uses XLA for collective operations
     else:
         raise RuntimeError(f"No available nccl backend found on device type {get_device_name()}.")

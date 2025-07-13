@@ -89,9 +89,22 @@ class vLLMRollout(BaseRollout):
         self.config = config
 
         tensor_parallel_size = self.config.get("tensor_model_parallel_size", 1)
-        assert tensor_parallel_size <= torch.distributed.get_world_size(), (
-            "tensor parallel size should be less than or equal to the world size"
+        
+        # Allow overriding distributed_executor_backend from engine_kwargs
+        # Get engine_kwargs early to check backend
+        engine_kwargs = (
+            {}
+            if "engine_kwargs" not in config or "vllm" not in config.engine_kwargs
+            else OmegaConf.to_container(deepcopy(config.engine_kwargs.vllm))
         )
+        distributed_backend = engine_kwargs.get("distributed_executor_backend", None)
+        
+        # Only check world_size when using external_launcher backend
+        # For mp/ray backends or when backend is not specified, vLLM will handle it
+        if distributed_backend == "external_launcher":
+            assert tensor_parallel_size <= torch.distributed.get_world_size(), (
+                "tensor parallel size should be less than or equal to the world size"
+            )
         max_num_batched_tokens = self.config.get("max_num_batched_tokens", 8192)
 
         if kwargs.get("train_tp") is not None:
@@ -148,12 +161,7 @@ class vLLMRollout(BaseRollout):
 
         lora_kwargs = kwargs.pop("lora_kwargs", {})
         self.lora_kwargs = lora_kwargs
-        # copy it to avoid secretly modifying the engine config
-        engine_kwargs = (
-            {}
-            if "engine_kwargs" not in config or "vllm" not in config.engine_kwargs
-            else OmegaConf.to_container(deepcopy(config.engine_kwargs.vllm))
-        )
+        # engine_kwargs already extracted above, just filter None values
         # For each vLLM engine parameter,
         # - `None` means not setting it, so we pop it, and leave it to vLLM default value
         #    (which can vary across different vLLM versions);
@@ -165,11 +173,14 @@ class vLLMRollout(BaseRollout):
         from verl.utils.device import get_device_name
         device_name = get_device_name()
 
+        # Allow overriding distributed_executor_backend from engine_kwargs
+        # Don't default to external_launcher - let vLLM choose the appropriate backend
+        distributed_backend = engine_kwargs.pop("distributed_executor_backend", None)
+        
         llm_kwargs = dict(
             model=model_path,
             enable_sleep_mode=config.free_cache_engine,
             tensor_parallel_size=tensor_parallel_size,
-            distributed_executor_backend="external_launcher",
             dtype=config.dtype,
             enforce_eager=config.enforce_eager,
             skip_tokenizer_init=False,
@@ -184,6 +195,10 @@ class vLLMRollout(BaseRollout):
             **lora_kwargs,
             **engine_kwargs,
         )
+        
+        # Only set distributed_executor_backend if it was specified
+        if distributed_backend is not None:
+            llm_kwargs["distributed_executor_backend"] = distributed_backend
 
         if device_name == "tpu":
             llm_kwargs["device"] = "tpu"
