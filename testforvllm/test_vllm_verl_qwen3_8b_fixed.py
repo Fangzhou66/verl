@@ -173,6 +173,7 @@ def main():
         # Memory and performance
         "max_num_batched_tokens": 2048,
         "max_num_seqs": 64,
+        "gpu_memory_utilization": 0.5,
         "free_cache_engine": False,
         "disable_log_stats": True,
         "enable_chunked_prefill": False,
