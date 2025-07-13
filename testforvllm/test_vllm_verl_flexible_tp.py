@@ -3,7 +3,7 @@
 Test for vLLM with VERL supporting both tp=1 and tp=8 on TPU.
 This test can run with different tensor parallel sizes and SPMD modes.
 """
-
+"python /home/fangzhou/verl/testforvllm/test_vllm_verl_flexible_tp.py --tp 8 --use-spmd"
 import os
 import sys
 import argparse
