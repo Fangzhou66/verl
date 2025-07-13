@@ -30,6 +30,7 @@ args = parser.parse_args()
 # Set SPMD environment variable BEFORE any imports
 if args.use_spmd and args.tp == 8:
     os.environ["VLLM_XLA_USE_SPMD"] = "1"
+    # Don't set XLA_USE_SPMD to avoid deprecation warning
     print("✓ VLLM_XLA_USE_SPMD set to '1' before imports")
 else:
     os.environ["VLLM_XLA_USE_SPMD"] = "0"
@@ -143,6 +144,7 @@ def create_config(args):
         # Memory and performance
         "max_num_batched_tokens": min(2048, args.max_model_len),
         "max_num_seqs": 64 if args.tp == 1 else 32,  # Adjust based on tp size
+        "gpu_memory_utilization": 0.5,
         "free_cache_engine": False,
         "disable_log_stats": True,
         "enable_chunked_prefill": False,

@@ -54,7 +54,8 @@ _is_tpu_available = None
 def get_is_tpu_available():
     global _is_tpu_available
     if _is_tpu_available is None:
-        _is_tpu_available = is_tpu_available()
+        # Only check environment variable to avoid creating XLA device early
+        _is_tpu_available = (os.environ.get("PJRT_DEVICE") == "TPU")
     return _is_tpu_available
 
 # For backward compatibility, make it accessible as a property

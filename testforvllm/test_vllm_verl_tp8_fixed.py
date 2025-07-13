@@ -189,6 +189,7 @@ def create_config(args):
         # Memory and performance
         "max_num_batched_tokens": min(2048, args.max_model_len),
         "max_num_seqs": 64 if args.tp == 1 else 32,
+        "gpu_memory_utilization": 0.6,
         "free_cache_engine": False,
         "disable_log_stats": True,
         "enable_chunked_prefill": False,

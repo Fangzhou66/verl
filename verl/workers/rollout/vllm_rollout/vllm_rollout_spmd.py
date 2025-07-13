@@ -203,6 +203,8 @@ class vLLMRollout(BaseRollout):
         if device_name == "tpu":
             llm_kwargs["device"] = "tpu"
             llm_kwargs["disable_custom_all_reduce"] = True
+            # Pass gpu_memory_utilization for TPUs as well - vLLM uses it to calculate KV cache size
+            llm_kwargs["gpu_memory_utilization"] = config.gpu_memory_utilization
         else:
             llm_kwargs["gpu_memory_utilization"] = config.gpu_memory_utilization
             llm_kwargs["disable_custom_all_reduce"] = True
