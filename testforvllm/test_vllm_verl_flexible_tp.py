@@ -19,9 +19,9 @@ parser.add_argument("--model", type=str, default="Qwen/Qwen3-8B",
                     help="Model to test")
 parser.add_argument("--max-model-len", type=int, default=4096,
                     help="Maximum model length")
-parser.add_argument("--prompt-length", type=int, default=128,
+parser.add_argument("--prompt-length", type=int, default=256,
                     help="Prompt length for generation")
-parser.add_argument("--response-length", type=int, default=128,
+parser.add_argument("--response-length", type=int, default=256,
                     help="Response length for generation")
 parser.add_argument("--test-prompt", type=str, default="The capital of France is",
                     help="Test prompt for generation")
@@ -144,7 +144,7 @@ def create_config(args):
         # Memory and performance
         "max_num_batched_tokens": min(2048, args.max_model_len),
         "max_num_seqs": 64 if args.tp == 1 else 32,  # Adjust based on tp size
-        "gpu_memory_utilization": 0.5,
+        "gpu_memory_utilization": 0.6,
         "free_cache_engine": False,
         "disable_log_stats": True,
         "enable_chunked_prefill": False,
